@@ -1,0 +1,19 @@
+{
+  "name": "Umaira AI",
+  "short_name": "Umaira",
+  "description": "Asisten AI pribadi: chat, pembuat gambar, dan workspace.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f0a1e",
+  "theme_color": "#7c3aed",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/assets/umaira-mark-v3.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

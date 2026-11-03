@@ -1,0 +1,6 @@
+.um-cap{margin:12px 0}
+.um-cap label{display:block;font-size:14px;font-weight:600;margin-bottom:6px}
+.um-cap-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.um-cap img{border-radius:10px;max-width:100%;height:auto;background:#F4F7F5}
+.um-cap button{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer}
+.um-cap input{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border-radius:10px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;text-transform:uppercase;letter-spacing:.2em}

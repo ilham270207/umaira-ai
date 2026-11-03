@@ -2233,23 +2233,14 @@ async function sendChatMessage() {
       dataLength: file.data?.length || 0
     })));
 
-    const apiResponse = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messages: getCurrentMessages(),
-        projectContext,
-        attachments
-      })
-    });
-
-    if (!apiResponse.ok) {
-      throw new Error(`HTTP ${apiResponse.status}`);
-    }
-
-    const data = await apiResponse.json();
+    const __umPayload = { messages: getCurrentMessages(), projectContext, attachments };
+    const data = await (window.umairaChatStream
+      ? window.umairaChatStream(__umPayload)
+      : fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(__umPayload) })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          }));
     response = data.message;
 
     console.log(

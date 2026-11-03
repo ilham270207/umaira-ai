@@ -1,0 +1,27 @@
+/*
+ * umaira-font.css
+ * Font serif seperti gaya Claude / Times. Ubah satu baris --umaira-font untuk ganti font.
+ * Alternatif: "Newsreader", "Lora", "Crimson Pro" (tambahkan ke @import di bawah).
+ */
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap");
+
+:root {
+  --umaira-font: "Source Serif 4", "Times New Roman", Times, Georgia, "Noto Serif", serif;
+  --umaira-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", "Droid Sans Mono", monospace;
+}
+
+html body,
+body button,
+body input,
+body select,
+body textarea {
+  font-family: var(--umaira-font) !important;
+}
+
+body *:not(pre):not(code):not(kbd):not(samp):not(svg):not(svg *):not([class*="icon"]):not([class*="Icon"]) {
+  font-family: var(--umaira-font) !important;
+}
+
+pre, pre *, code, kbd, samp {
+  font-family: var(--umaira-mono) !important;
+}

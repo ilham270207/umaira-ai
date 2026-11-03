@@ -1,3 +1,6 @@
+import { createChatFileMiddleware, createChatFilesRouter } from "./umaira-chatfile-server.js";
+import { captchaRouter } from "./umaira-captcha-server.js";
+import { createDocgenRouter } from "./umaira-docgen-server.js";
 import { createWorkspaceDataRouter, buildPluginContext } from "./workspace-data.js";
 import { createScheduledRouter, startScheduler } from "./workspace-scheduler.js";
 import { createFilesRouter, buildFileContext } from "./workspace-files.js";
@@ -105,7 +108,17 @@ app.get("/admin", async (req, res) => {
 });
 // ===== END UMAIRA ADMIN PAGE =====
 
+// UMAIRA BLOCK BACKUPS
+app.use((req, res, next) => {
+  let p = "";
+  try { p = decodeURIComponent(req.path); } catch (e) { return res.status(400).end(); }
+  if (/(\.bak|\.orig|\.old|~|\.before-[^/]*)$/i.test(p) || /\/\.[^/]/.test(p)) {
+    return res.status(404).sendFile(process.cwd() + "/public/404.html");
+  }
+  next();
+});
 app.use(express.static("public"));
+app.use("/api/auth", captchaRouter); // UMAIRA CAPTCHA
 app.use("/api/auth", authRouter);
 
 // ===== UMAIRA API GUARD =====
@@ -124,6 +137,9 @@ app.use("/api/wsdata/files", createFilesRouter({ currentUser: (req) => currentUs
 app.use("/api/wsdata/chats", createChatsRouter({ currentUser: (req) => currentUser(req) }));
 app.use("/api/chat-images", createChatImagesRouter({ currentUser: (req) => currentUser(req) }));
 app.use("/api/gaya", createGayaRouter({ currentUser: (req) => currentUser(req) }));
+app.use("/api/docgen", createDocgenRouter({ currentUser: (req) => currentUser(req) })); // UMAIRA DOCGEN
+app.use("/api/chat-files", createChatFilesRouter({ currentUser: (req) => currentUser(req) })); // UMAIRA CHATFILE
+app.use("/api/chat", createChatFileMiddleware({ currentUser: (req) => currentUser(req) })); // UMAIRA CHATFILE (sebelum edit gambar)
 app.use("/api/chat", createImageEditMiddleware({ currentUser: (req) => currentUser(req) }));
 app.use("/api/wsdata", createWorkspaceDataRouter({ currentUser: (req) => currentUser(req) }));
 startScheduler();
@@ -961,14 +977,14 @@ function cleanUmairaReply(text) {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : text.trim();
 }
 
-async function tryGeminiChat(messages, projectContext = "", attachments = []) {
+async function tryGeminiChat(messages, projectContext = "", attachments = [], onDelta = null) {
   const primary = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const extra = (process.env.GEMINI_FALLBACK_MODELS || "gemini-3.7-flash,gemini-3.5-flash")
     .split(",").map(x => x.trim()).filter(Boolean);
   const models = [...new Set([primary, ...extra])];
   for (const model of models) {
     const t0 = Date.now();
-    const out = await __tryGeminiChat(messages, projectContext, attachments, model);
+    const out = await __tryGeminiChat(messages, projectContext, attachments, model, onDelta);
     console.log("[chat] " + model + " " + (out ? "ok" : "gagal") + " ms=" + (Date.now() - t0));
     if (out) return out;
   }
@@ -991,8 +1007,7 @@ async function __tryGeminiChat(
   messages,
   projectContext = "",
   attachments = [],
-  modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash"
-) {
+  modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash", onDelta = null) {
   if (!process.env.GEMINI_API_KEY) return null;
 
   try {
@@ -1047,15 +1062,14 @@ async function __tryGeminiChat(
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${
-        encodeURIComponent(modelName)
-      }:generateContent`,
+        encodeURIComponent(modelName)}:${onDelta ? "streamGenerateContent?alt=sse" : "generateContent"}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-goog-api-key": process.env.GEMINI_API_KEY
         },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(onDelta ? 90000 : 20000),
         body: JSON.stringify({
           systemInstruction: {
             parts: [{
@@ -1078,6 +1092,38 @@ async function __tryGeminiChat(
       );
 
       return null;
+    }
+
+        if (onDelta) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let full = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const chunk = JSON.parse(payload);
+            const t = (chunk?.candidates?.[0]?.content?.parts || [])
+              .map(part => part?.text || "")
+              .join("");
+            if (t) { full += t; onDelta(t); }
+          } catch {}
+        }
+      }
+      if (!full.trim()) {
+        console.error("Gemini stream returned no text.");
+        return null;
+      }
+      return cleanUmairaReply(full.trim());
     }
 
     const data = await response.json();
@@ -1230,8 +1276,7 @@ async function __tryOpenRouterChat(
 async function tryAIChat(
   messages,
   projectContext = "",
-  attachments = []
-) {
+  attachments = [], onDelta = null) {
   const hasImageAttachments =
     Array.isArray(attachments) &&
     attachments.some(file =>
@@ -1244,11 +1289,7 @@ async function tryAIChat(
 
   // Gunakan Gemini terlebih dahulu untuk semua chat; OpenRouter hanya cadangan.
   if (process.env.GEMINI_API_KEY) {
-    const geminiResponse = await tryGeminiChat(
-      messages,
-      projectContext,
-      attachments
-    );
+    const geminiResponse = await tryGeminiChat(messages, projectContext, attachments, onDelta);
 
     if (geminiResponse) {
       return geminiResponse;
@@ -1266,6 +1307,11 @@ async function tryAIChat(
     attachments
   );
 }
+
+// UMAIRA WEB SEARCH
+app.use("/api/search", async (req, res, next) => { try { if (!(await currentUser(req))) return res.status(401).json({ error: "Silakan masuk dulu." }); next(); } catch (e) { res.status(401).json({ error: "Silakan masuk dulu." }); } });
+import { createRequire as __umCR } from "node:module";
+app.use("/api", __umCR(import.meta.url)("./umaira-search-server.cjs"));
 
 app.post("/api/chat-action", async (req, res) => {
   const action = String(req.body?.action || "").trim();
@@ -1423,6 +1469,37 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({
       error: "A user message is required."
     });
+  }
+
+  /* umaira-stream-sse */
+  if (String(req.headers.accept || "").includes("text/event-stream")) {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+    const send = (event, data) => {
+      if (res.writableEnded) return;
+      res.write("event: " + event + "\ndata: " + JSON.stringify(data) + "\n\n");
+      if (typeof res.flush === "function") res.flush();
+    };
+
+    try {
+      const full = await tryAIChat(
+        messages,
+        projectContext,
+        attachments,
+        (t) => send("delta", { t })
+      );
+      if (!full) throw new Error("Gemini returned an empty response.");
+      send("done", { mode: "gemini", provider: "gemini", version: "1.4.0", message: full });
+    } catch (error) {
+      console.error("Chat Gemini error:", error?.message || error);
+      send("error", { error: error?.message || "Gemini request failed." });
+    }
+    return res.end();
   }
 
   try {

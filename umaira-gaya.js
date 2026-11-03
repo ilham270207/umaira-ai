@@ -12,6 +12,8 @@ function clean(raw) {
     gaya: pick(r.gaya, ["ringkas", "seimbang", "rinci"], "seimbang"),
     nada: pick(r.nada, ["santai", "netral", "formal"], "netral"),
     bahasa: pick(r.bahasa, ["id", "en", "auto"], "id"),
+    contoh: r.contoh === true,
+    langkah: r.langkah === true,
     instruksi: String(r.instruksi == null ? "" : r.instruksi).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim().slice(0, 1500)
   };
 }
@@ -26,6 +28,8 @@ export async function buildGayaContext(uid) {
   if (g.nada === "formal") lines.push("Gunakan bahasa Indonesia baku dan profesional.");
   if (g.bahasa === "en") lines.push("Jawab dalam Bahasa Inggris.");
   if (g.bahasa === "auto") lines.push("Jawab dalam bahasa yang dipakai pengguna.");
+  if (g.contoh) lines.push("Sertakan contoh konkret pada penjelasan.");
+  if (g.langkah) lines.push("Susun jawaban sebagai langkah bernomor bila topiknya berupa cara atau proses.");
   if (g.instruksi) lines.push("Instruksi khusus dari pengguna: " + g.instruksi);
   if (!lines.length) return "";
   return "[Gaya Umaira pilihan pengguna]\n" + lines.map((l) => "- " + l).join("\n") +
