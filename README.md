@@ -1,6 +1,6 @@
-# AgentFlow AI v1.2
+# Umaira AI
 
-AgentFlow AI is a planning workspace that turns natural-language goals into actionable workflows.
+Umaira AI adalah asisten AI berbahasa Indonesia berbasis web. Bisa dipakai untuk mengobrol, membuat gambar, mengelola workspace, dan membuat dokumen, dengan mode tamu untuk mencoba sebelum mendaftar.
 
 ## V1.2
 - Project-style dashboard
